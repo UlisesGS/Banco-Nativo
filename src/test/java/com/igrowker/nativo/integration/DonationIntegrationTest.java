@@ -19,6 +19,8 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 
 import static io.restassured.RestAssured.given;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -70,8 +72,10 @@ public class DonationIntegrationTest {
                 true, savedUser2.getId(), BigDecimal.ZERO));
 
 
-        savedDonation = donationRepository.save(new Donation(null,BigDecimal.valueOf(100.0), null,
-                savedAccount.getId(), savedAccount2.getId(),true,null,null));
+
+        savedDonation = new Donation(null,BigDecimal.valueOf(100.0), null,
+                savedAccount.getId(), savedAccount2.getId(),true,null,null);
+
 
         token = "Bearer " + jwtService.generateToken(savedUser);
     }
@@ -80,8 +84,13 @@ public class DonationIntegrationTest {
     @Nested
     class getAllTestDonation{
 
+        // When call at method create Donation
         @Test
-        public void when_call_create_donation_true_and_data_return_ok() throws Exception {
+        public void when_call_create_donation_and_data_return_ok() throws Exception {
+
+            Donation savedDonation = new Donation(null,BigDecimal.valueOf(100.0), null,
+                    savedAccount.getId(), savedAccount2.getId(),true,LocalDateTime.now(),LocalDateTime.now());
+
 
             String baseURL = "http://localhost:" + port;
             var requestDonationDto = new RequestDonationDto(BigDecimal.valueOf(100.0),savedAccount2.getAccountNumber(),true);
