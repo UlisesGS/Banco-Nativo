@@ -6,10 +6,7 @@ import com.igrowker.nativo.entities.Account;
 import com.igrowker.nativo.entities.Donation;
 import com.igrowker.nativo.entities.TransactionStatus;
 import com.igrowker.nativo.entities.User;
-import com.igrowker.nativo.exceptions.InsufficientFundsException;
-import com.igrowker.nativo.exceptions.InvalidDataException;
-import com.igrowker.nativo.exceptions.InvalidUserCredentialsException;
-import com.igrowker.nativo.exceptions.ResourceNotFoundException;
+import com.igrowker.nativo.exceptions.*;
 import com.igrowker.nativo.mappers.DonationMapper;
 import com.igrowker.nativo.repositories.AccountRepository;
 import com.igrowker.nativo.repositories.DonationRepository;
@@ -531,6 +528,206 @@ public class DonationServiceImplTest {
             });
 
             String expectedMessage = "La cuenta indicada no coincide con el usuario logueado en la aplicación";
+            String actualMessage = exception.getMessage();
+            assertTrue(actualMessage.contains(expectedMessage));
+        }
+    }
+
+
+    @Nested
+    class GetDonationDonor {
+
+        @Test
+        public void recordDonationDonor_shouldBeOk() throws Exception {
+            String idDonorAccount = "a63a054d-fbc4-44f4-beaa-084b2c0e0192";
+
+            Donation donation = new Donation("c12e32e4-0e27-438d-8861-cb1aaa619f56",
+                    BigDecimal.valueOf(100.0), TransactionStatus.ACCEPTED, idDonorAccount,
+                    "f89de776-3e64-42c0-b880-8d9e1f5697c8", true, LocalDateTime.now(), LocalDateTime.now());
+
+            List<Donation> donationList = List.of(donation);
+
+            ResponseDonationRecord responseDonationRecord = new ResponseDonationRecord(
+                    donation.getId(), donation.getAmount(), "Anónimo", ".", donation.getAccountIdDonor(),
+                    userBeneficiary.getName(), userBeneficiary.getSurname(),
+                    donation.getAccountIdBeneficiary(), donation.getStatus(),
+                    donation.getCreatedAt(), donation.getUpdateAt());
+
+            List<ResponseDonationRecord> responseList = List.of(responseDonationRecord);
+
+            when(validations.isUserAccountMismatch(idDonorAccount)).thenReturn(false);
+            when(validations.getAuthenticatedUserAndAccount()).thenReturn(new Validations.UserAccountPair(userDonor, accountDonor));
+            when(donationRepository.findAllByAccountIdDonor(accountDonor.getId())).thenReturn(Optional.of(donationList));
+            when(accountRepository.findById(donation.getAccountIdBeneficiary())).thenReturn(Optional.of(accountBeneficiary));
+            when(userRepository.findById(accountBeneficiary.getUserId())).thenReturn(Optional.of(userBeneficiary));
+            when(donationMapper.listDonationToListResponseDonationRecord(any())).thenReturn(responseList);
+
+            var result = donationServiceImpl.recordDonationDonor(idDonorAccount);
+
+            assertThat(result).isNotNull();
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).id()).isEqualTo(responseDonationRecord.id());
+            assertThat(result.get(0).amount()).isEqualTo(responseDonationRecord.amount());
+            assertThat(result.get(0).donorName()).isEqualTo(responseDonationRecord.donorName());
+            assertThat(result.get(0).donorLastName()).isEqualTo(responseDonationRecord.donorLastName());
+            assertThat(result.get(0).accountIdDonor()).isEqualTo(responseDonationRecord.accountIdDonor());
+            assertThat(result.get(0).beneficiaryName()).isEqualTo(responseDonationRecord.beneficiaryName());
+            assertThat(result.get(0).beneficiaryLastName()).isEqualTo(responseDonationRecord.beneficiaryLastName());
+            assertThat(result.get(0).accountIdBeneficiary()).isEqualTo(responseDonationRecord.accountIdBeneficiary());
+            assertThat(result.get(0).status()).isEqualTo(responseDonationRecord.status());
+            assertThat(result.get(0).createdAt()).isEqualTo(responseDonationRecord.createdAt());
+            assertThat(result.get(0).updateAt()).isEqualTo(responseDonationRecord.updateAt());
+
+            verify(validations, times(1)).isUserAccountMismatch(idDonorAccount);
+            verify(validations, times(1)).getAuthenticatedUserAndAccount();
+            verify(donationRepository, times(1)).findAllByAccountIdDonor(accountDonor.getId());
+            verify(accountRepository, times(1)).findById(donation.getAccountIdBeneficiary());
+            verify(userRepository, times(1)).findById(accountBeneficiary.getUserId());
+            verify(donationMapper, times(1)).listDonationToListResponseDonationRecord(any());
+        }
+
+
+        @Test
+        public void get_donation_donor_DENIED_InvalidUserCredentialsException() {
+
+            when(validations.isUserAccountMismatch(any())).thenReturn(true);
+            Exception exception = assertThrows(InvalidUserCredentialsException.class, () -> {
+                donationServiceImpl.recordDonationDonor("null");
+            });
+
+            String expectedMessage = "La cuenta indicada no coincide con el usuario logueado en la aplicación";
+            String actualMessage = exception.getMessage();
+            assertTrue(actualMessage.contains(expectedMessage));
+        }
+
+        @Test
+        public void get_donation_donor_shouldThrowResourceNotFoundException_whenNoDonationsFound() {
+
+            when(validations.isUserAccountMismatch(any())).thenReturn(false);
+            when(validations.getAuthenticatedUserAndAccount()).thenReturn(new Validations.UserAccountPair(userDonor, accountDonor));
+            when(donationRepository.findAllByAccountIdDonor(accountDonor.getId())).thenReturn(Optional.empty());
+
+            Exception exception = assertThrows(ResourceNotFoundException.class, () -> {
+                donationServiceImpl.recordDonationDonor(userDonor.getId());
+            });
+
+            String expectedMessage = "No hay donacion que tenga ese id de cuenta";
+            String actualMessage = exception.getMessage();
+            assertTrue(actualMessage.contains(expectedMessage));
+        }
+
+        @Test
+        public void get_donation_donor_shouldThrowResourceNotFoundException_whenNoDonationsGiven() {
+            when(validations.isUserAccountMismatch(any())).thenReturn(false);
+            when(validations.getAuthenticatedUserAndAccount()).thenReturn(new Validations.UserAccountPair(userDonor, accountDonor));
+            List<Donation> emptyDonationList = new ArrayList<>();
+            when(donationRepository.findAllByAccountIdDonor(accountDonor.getId())).thenReturn(Optional.of(emptyDonationList));
+
+            Exception exception = assertThrows(ResourceNotFoundException.class, () -> {
+                donationServiceImpl.recordDonationDonor(userDonor.getId());
+            });
+
+            String expectedMessage = "No hay donaciones dadas";
+            String actualMessage = exception.getMessage();
+            assertTrue(actualMessage.contains(expectedMessage));
+        }
+
+    }
+
+
+    @Nested
+    class GetDonationBeneficiary {
+
+        @Test
+        public void recordDonationBeneficiary_shouldBeOk() throws Exception {
+            String idBeneficiaryAccount = "f89de776-3e64-42c0-b880-8d9e1f5697c8";
+
+            Donation donation = new Donation("c12e32e4-0e27-438d-8861-cb1aaa619f56",
+                    BigDecimal.valueOf(100.0), TransactionStatus.ACCEPTED, "a63a054d-fbc4-44f4-beaa-084b2c0e0192",
+                    idBeneficiaryAccount, true, LocalDateTime.now(), LocalDateTime.now());
+
+            List<Donation> donationList = List.of(donation);
+
+            ResponseDonationRecord responseDonationRecord = new ResponseDonationRecord(
+                    donation.getId(), donation.getAmount(), "Anónimo", ".", donation.getAccountIdDonor(),
+                    userBeneficiary.getName(), userBeneficiary.getSurname(),
+                    donation.getAccountIdBeneficiary(), donation.getStatus(),
+                    donation.getCreatedAt(), donation.getUpdateAt());
+
+            List<ResponseDonationRecord> responseList = List.of(responseDonationRecord);
+
+            when(validations.isUserAccountMismatch(idBeneficiaryAccount)).thenReturn(false);
+            when(validations.getAuthenticatedUserAndAccount()).thenReturn(new Validations.UserAccountPair(userBeneficiary, accountBeneficiary));
+            when(donationRepository.findAllByAccountIdDonor(accountBeneficiary.getId())).thenReturn(Optional.of(donationList));
+            when(accountRepository.findById(donation.getAccountIdDonor())).thenReturn(Optional.of(accountDonor));
+            when(userRepository.findById(accountDonor.getUserId())).thenReturn(Optional.of(userDonor));
+            when(donationMapper.listDonationToListResponseDonationRecord(any())).thenReturn(responseList);
+
+            var result = donationServiceImpl.recordDonationBeneficiary(idBeneficiaryAccount);
+
+            assertThat(result).isNotNull();
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).id()).isEqualTo(responseDonationRecord.id());
+            assertThat(result.get(0).amount()).isEqualTo(responseDonationRecord.amount());
+            assertThat(result.get(0).donorName()).isEqualTo(responseDonationRecord.donorName());
+            assertThat(result.get(0).donorLastName()).isEqualTo(responseDonationRecord.donorLastName());
+            assertThat(result.get(0).accountIdDonor()).isEqualTo(responseDonationRecord.accountIdDonor());
+            assertThat(result.get(0).beneficiaryName()).isEqualTo(responseDonationRecord.beneficiaryName());
+            assertThat(result.get(0).beneficiaryLastName()).isEqualTo(responseDonationRecord.beneficiaryLastName());
+            assertThat(result.get(0).accountIdBeneficiary()).isEqualTo(responseDonationRecord.accountIdBeneficiary());
+            assertThat(result.get(0).status()).isEqualTo(responseDonationRecord.status());
+            assertThat(result.get(0).createdAt()).isEqualTo(responseDonationRecord.createdAt());
+            assertThat(result.get(0).updateAt()).isEqualTo(responseDonationRecord.updateAt());
+
+            verify(validations, times(1)).isUserAccountMismatch(idBeneficiaryAccount);
+            verify(validations, times(1)).getAuthenticatedUserAndAccount();
+            verify(donationRepository, times(1)).findAllByAccountIdDonor(accountBeneficiary.getId());
+            verify(accountRepository, times(1)).findById(donation.getAccountIdDonor());
+            verify(userRepository, times(1)).findById(accountDonor.getUserId());
+            verify(donationMapper, times(1)).listDonationToListResponseDonationRecord(any());
+        }
+
+        @Test
+        public void get_donation_beneficiary_DENIED_InvalidUserCredentialsException() {
+
+            when(validations.isUserAccountMismatch(any())).thenReturn(true);
+            Exception exception = assertThrows(InvalidUserCredentialsException.class, () -> {
+                donationServiceImpl.recordDonationBeneficiary("null");
+            });
+
+            String expectedMessage = "La cuenta indicada no coincide con el usuario logueado en la aplicación";
+            String actualMessage = exception.getMessage();
+            assertTrue(actualMessage.contains(expectedMessage));
+        }
+
+        @Test
+        public void get_donation_beneficiary_shouldThrowResourceNotFoundException_whenNoDonationsFound() {
+
+            when(validations.isUserAccountMismatch(any())).thenReturn(false);
+            when(validations.getAuthenticatedUserAndAccount()).thenReturn(new Validations.UserAccountPair(userDonor, accountDonor));
+            when(donationRepository.findAllByAccountIdDonor(accountDonor.getId())).thenReturn(Optional.empty());
+
+            Exception exception = assertThrows(ResourceNotFoundException.class, () -> {
+                donationServiceImpl.recordDonationBeneficiary(userDonor.getId());
+            });
+
+            String expectedMessage = "No hay donacion que tenga ese id de cuenta";
+            String actualMessage = exception.getMessage();
+            assertTrue(actualMessage.contains(expectedMessage));
+        }
+
+        @Test
+        public void get_donation_beneficiary_shouldThrowResourceNotFoundException_whenNoDonationsGiven() {
+            when(validations.isUserAccountMismatch(any())).thenReturn(false);
+            when(validations.getAuthenticatedUserAndAccount()).thenReturn(new Validations.UserAccountPair(userDonor, accountDonor));
+            List<Donation> emptyDonationList = new ArrayList<>();
+            when(donationRepository.findAllByAccountIdDonor(accountDonor.getId())).thenReturn(Optional.of(emptyDonationList));
+
+            Exception exception = assertThrows(ResourceNotFoundException.class, () -> {
+                donationServiceImpl.recordDonationBeneficiary(userDonor.getId());
+            });
+
+            String expectedMessage = "No hay donaciones recibidas";
             String actualMessage = exception.getMessage();
             assertTrue(actualMessage.contains(expectedMessage));
         }
